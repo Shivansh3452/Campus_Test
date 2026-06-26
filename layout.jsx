@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
   Box,
-  CssBaseline,
   Drawer,
   IconButton,
   List,
@@ -13,10 +12,11 @@ import {
   Toolbar,
   Typography,
   Badge,
+  Chip,
   useMediaQuery,
   useTheme,
   Container,
-  Chip
+  Tooltip
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -25,8 +25,7 @@ import {
   Star as StarIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { useNotifications } from '../../context/NotificationContext';
-import logger from '../../services/logger';
+import { useNotifications } from './context/NotificationContext';
 
 const drawerWidth = 240;
 
@@ -36,7 +35,7 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { notifications, refresh, loading } = useNotifications();
+  const { notifications, loading, refresh } = useNotifications();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -44,15 +43,11 @@ const Layout = ({ children }) => {
 
   const handleNavigation = (path) => {
     navigate(path);
-    if (isMobile) {
-      setMobileOpen(false);
-    }
-    logger.info('Navigation', { from: location.pathname, to: path });
+    if (isMobile) setMobileOpen(false);
   };
 
   const handleRefresh = () => {
     refresh();
-    logger.info('Manual refresh triggered');
   };
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -65,9 +60,9 @@ const Layout = ({ children }) => {
 
   const drawer = (
     <div>
-      <Toolbar>
+      <Toolbar sx={{ backgroundColor: 'primary.main', color: 'white' }}>
         <Typography variant="h6" noWrap component="div">
-          Campus Notify
+          📬 Campus Notify
         </Typography>
       </Toolbar>
       <List>
@@ -85,6 +80,9 @@ const Layout = ({ children }) => {
                   color: 'primary.main',
                 },
               },
+              '&:hover': {
+                backgroundColor: 'action.hover',
+              },
             }}
           >
             <ListItemIcon>{item.icon}</ListItemIcon>
@@ -93,7 +91,7 @@ const Layout = ({ children }) => {
               <Chip 
                 label={unreadCount} 
                 size="small" 
-                color="primary" 
+                color="error" 
                 sx={{ ml: 1 }}
               />
             )}
@@ -105,7 +103,6 @@ const Layout = ({ children }) => {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <CssBaseline />
       <AppBar
         position="fixed"
         sx={{
@@ -134,29 +131,33 @@ const Layout = ({ children }) => {
                 size="small" 
                 color="error"
                 variant="outlined"
-                sx={{ display: { xs: 'none', sm: 'flex' } }}
+                sx={{ 
+                  display: { xs: 'none', sm: 'flex' },
+                  color: 'white',
+                  borderColor: 'white'
+                }}
               />
             )}
-            <IconButton color="inherit" onClick={handleRefresh} disabled={loading}>
-              <Badge color="error" variant="dot" invisible={!unreadCount}>
-                <RefreshIcon />
-              </Badge>
-            </IconButton>
+            <Tooltip title="Refresh notifications">
+              <IconButton color="inherit" onClick={handleRefresh} disabled={loading}>
+                <Badge color="error" variant="dot" invisible={!unreadCount}>
+                  <RefreshIcon />
+                </Badge>
+              </IconButton>
+            </Tooltip>
           </Box>
         </Toolbar>
       </AppBar>
+      
       <Box
         component="nav"
         sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-        aria-label="navigation"
       >
         <Drawer
           variant="temporary"
           open={mobileOpen}
           onClose={handleDrawerToggle}
-          ModalProps={{
-            keepMounted: true,
-          }}
+          ModalProps={{ keepMounted: true }}
           sx={{
             display: { xs: 'block', sm: 'none' },
             '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
@@ -175,6 +176,7 @@ const Layout = ({ children }) => {
           {drawer}
         </Drawer>
       </Box>
+      
       <Box
         component="main"
         sx={{
