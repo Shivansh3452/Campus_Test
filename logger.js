@@ -1,7 +1,5 @@
-/**
- * Production-ready logging middleware
- * Supports different log levels and environments
- */
+// src/services/logger.js
+import { sanitizeObject } from '../utils/security';
 
 const LOG_LEVELS = {
   DEBUG: 0,
@@ -11,203 +9,205 @@ const LOG_LEVELS = {
   NONE: 4
 };
 
+const LOG_LEVEL_NAMES = {
+  0: 'DEBUG',
+  1: 'INFO',
+  2: 'WARN',
+  3: 'ERROR',
+  4: 'NONE'
+};
+
 class Logger {
   constructor() {
-    this.logLevel = process.env.NODE_ENV === 'production' ? LOG_LEVELS.INFO : LOG_LEVELS.DEBUG;
+    const envLevel = process.env.REACT_APP_LOG_LEVEL || 'INFO';
+    this.logLevel = LOG_LEVELS[envLevel] !== undefined ? LOG_LEVELS[envLevel] : LOG_LEVELS.INFO;
     this.logs = [];
     this.maxLogs = 1000;
     this.enabled = true;
+    this.sessionId = this.generateSessionId();
+    this.batchQueue = [];
+    this.batchTimeout = null;
+    this.isProduction = process.env.REACT_APP_ENV === 'production';
   }
 
-  /**
-   * Set log level
-   */
   setLevel(level) {
     if (LOG_LEVELS[level] !== undefined) {
       this.logLevel = LOG_LEVELS[level];
+      this.info(`Log level set to ${level}`);
     }
   }
 
-  /**
-   * Disable logging
-   */
   disable() {
     this.enabled = false;
   }
 
-  /**
-   * Enable logging
-   */
   enable() {
     this.enabled = true;
   }
 
-  /**
-   * Format log entry with timestamp and context
-   */
   formatLog(level, message, data = null) {
     return {
       timestamp: new Date().toISOString(),
-      level,
+      level: LOG_LEVEL_NAMES[level] || 'INFO',
       message,
       data: data ? this.sanitizeData(data) : null,
-      sessionId: this.getSessionId()
+      sessionId: this.sessionId,
+      environment: this.isProduction ? 'production' : 'development',
+      version: process.env.REACT_APP_VERSION || '1.0.0'
     };
   }
 
-  /**
-   * Sanitize sensitive data from logs
-   */
   sanitizeData(data) {
     if (!data) return null;
-    
-    const sanitized = { ...data };
-    const sensitiveKeys = ['password', 'token', 'authorization', 'apiKey', 'secret'];
-    
-    Object.keys(sanitized).forEach(key => {
-      if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
-        sanitized[key] = '[REDACTED]';
-      }
-    });
-    
-    return sanitized;
+    return sanitizeObject(data);
   }
 
-  /**
-   * Get or create session ID
-   */
-  getSessionId() {
-    if (!window.__sessionId) {
-      window.__sessionId = this.generateSessionId();
-    }
-    return window.__sessionId;
-  }
-
-  /**
-   * Generate unique session ID
-   */
   generateSessionId() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+    return 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
   }
 
-  /**
-   * Log to console and store in memory
-   */
   log(level, message, data = null) {
-    if (!this.enabled || this.logLevel > LOG_LEVELS[level]) {
+    if (!this.enabled || this.logLevel > level) {
       return;
     }
 
     const entry = this.formatLog(level, message, data);
     
-    // Console output with colors
-    const styles = {
-      DEBUG: 'color: #6c757d',
-      INFO: 'color: #0d6efd',
-      WARN: 'color: #ffc107',
-      ERROR: 'color: #dc3545'
-    };
+    // Console output with colors in development
+    if (!this.isProduction) {
+      const styles = {
+        0: 'color: #6c757d; font-weight: lighter',
+        1: 'color: #0d6efd; font-weight: normal',
+        2: 'color: #ffc107; font-weight: bold',
+        3: 'color: #dc3545; font-weight: bold'
+      };
 
-    if (process.env.NODE_ENV !== 'production') {
+      const prefix = this.isProduction ? '' : `[${entry.timestamp}] `;
       console.log(
-        `%c[${entry.timestamp}] [${level}] ${message}`,
+        `%c${prefix}[${entry.level}] ${message}`,
         styles[level] || '',
         data ? data : ''
       );
     } else {
       // In production, only log errors to console
-      if (level === 'ERROR') {
+      if (level === LOG_LEVELS.ERROR) {
         console.error(`[${entry.timestamp}] [ERROR] ${message}`, data || '');
       }
     }
 
-    // Store in memory (with limit)
+    // Store in memory
     this.logs.push(entry);
     if (this.logs.length > this.maxLogs) {
       this.logs = this.logs.slice(-this.maxLogs);
     }
 
-    // Send to logging service in production
-    if (process.env.NODE_ENV === 'production' && level === 'ERROR') {
+    // Send to logging service
+    if (this.isProduction && level >= LOG_LEVELS.WARN) {
       this.sendToLoggingService(entry);
     }
-  }
 
-  /**
-   * Send logs to remote service (mock implementation)
-   */
-  sendToLoggingService(entry) {
-    // In real implementation, send to logging backend
-    // This is a mock for demonstration
-    try {
-      navigator.sendBeacon?.('/api/logs', JSON.stringify(entry));
-    } catch (e) {
-      // Fail silently
-    }
+    return entry;
   }
 
   debug(message, data = null) {
-    this.log('DEBUG', message, data);
+    return this.log(LOG_LEVELS.DEBUG, message, data);
   }
 
   info(message, data = null) {
-    this.log('INFO', message, data);
+    return this.log(LOG_LEVELS.INFO, message, data);
   }
 
   warn(message, data = null) {
-    this.log('WARN', message, data);
+    return this.log(LOG_LEVELS.WARN, message, data);
   }
 
   error(message, data = null) {
-    this.log('ERROR', message, data);
+    return this.log(LOG_LEVELS.ERROR, message, data);
   }
 
-  /**
-   * Get logs for debugging
-   */
+  sendToLoggingService(entry) {
+    // Batch logs to reduce network calls
+    this.batchQueue.push(entry);
+    
+    if (this.batchTimeout) {
+      clearTimeout(this.batchTimeout);
+    }
+    
+    this.batchTimeout = setTimeout(() => {
+      this.flushLogs();
+    }, 5000);
+  }
+
+  async flushLogs() {
+    if (this.batchQueue.length === 0) return;
+    
+    const logs = [...this.batchQueue];
+    this.batchQueue = [];
+    this.batchTimeout = null;
+    
+    try {
+      // Send to logging endpoint
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/logs', JSON.stringify(logs));
+      } else {
+        await fetch('/api/logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(logs)
+        });
+      }
+    } catch (error) {
+      console.error('Failed to send logs:', error);
+      // Re-queue logs
+      this.batchQueue = [...logs, ...this.batchQueue];
+    }
+  }
+
   getLogs(level = null) {
-    if (level) {
-      return this.logs.filter(log => log.level === level);
+    if (level !== null && LOG_LEVEL_NAMES[level]) {
+      return this.logs.filter(log => log.level === LOG_LEVEL_NAMES[level]);
     }
     return this.logs;
   }
 
-  /**
-   * Clear logs
-   */
   clearLogs() {
     this.logs = [];
+    this.batchQueue = [];
+    if (this.batchTimeout) {
+      clearTimeout(this.batchTimeout);
+      this.batchTimeout = null;
+    }
   }
 
-  /**
-   * Create a child logger with context
-   */
   child(context) {
     const childLogger = new Logger();
-    childLogger.context = context;
+    childLogger.logLevel = this.logLevel;
+    childLogger.enabled = this.enabled;
+    childLogger.sessionId = this.sessionId;
+    
+    // Override log method to include context
+    const originalLog = childLogger.log.bind(childLogger);
     childLogger.log = (level, message, data) => {
       const enhancedData = { ...data, ...context };
-      super.log(level, message, enhancedData);
+      return originalLog(level, message, enhancedData);
     };
+    
     return childLogger;
+  }
+
+  getSessionId() {
+    return this.sessionId;
   }
 }
 
 // Create singleton instance
 const logger = new Logger();
 
-// Middleware for API calls
+// Logging middleware for API
 export const loggingMiddleware = {
-  /**
-   * Log API request
-   */
   request(config) {
     const { method, url, params, data } = config;
-    logger.info(`API Request: ${method.toUpperCase()} ${url}`, {
+    logger.debug(`API Request: ${method.toUpperCase()} ${url}`, {
       method,
       url,
       params: params || null,
@@ -216,12 +216,9 @@ export const loggingMiddleware = {
     return config;
   },
 
-  /**
-   * Log API response
-   */
   response(response) {
     const { config, status, data } = response;
-    logger.info(`API Response: ${status} ${config.url}`, {
+    logger.debug(`API Response: ${status} ${config.url}`, {
       url: config.url,
       status,
       dataSize: data ? JSON.stringify(data).length : 0
@@ -229,9 +226,6 @@ export const loggingMiddleware = {
     return response;
   },
 
-  /**
-   * Log API error
-   */
   error(error) {
     const { config, message, response } = error;
     
@@ -251,5 +245,10 @@ export const loggingMiddleware = {
     return Promise.reject(error);
   }
 };
+
+// Clean up on page unload
+window.addEventListener('beforeunload', () => {
+  logger.flushLogs();
+});
 
 export default logger;
