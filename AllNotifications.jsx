@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Paper,
@@ -12,21 +12,20 @@ import {
   Chip,
   IconButton,
   TablePagination,
-  TextField,
-  MenuItem,
   FormControl,
   InputLabel,
   Select,
+  MenuItem,
   Alert,
-  Snackbar
+  Snackbar,
+  Tooltip
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
   Circle as CircleIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { useNotifications } from '../context/NotificationContext';
-import logger from '../services/logger';
+import { useNotifications } from './context/NotificationContext';
 
 const AllNotifications = () => {
   const { notifications, loading, error, markAsRead, refresh } = useNotifications();
@@ -37,10 +36,8 @@ const AllNotifications = () => {
 
   const types = ['All', 'Placement', 'Result', 'Event'];
 
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
-
+  const handleChangePage = (event, newPage) => setPage(newPage);
+  
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
@@ -53,7 +50,6 @@ const AllNotifications = () => {
       message: `Marked "${message}" as read`,
       severity: 'success'
     });
-    logger.info('Notification marked as read', { id, message });
   };
 
   const handleRefresh = () => {
@@ -99,9 +95,11 @@ const AllNotifications = () => {
               ))}
             </Select>
           </FormControl>
-          <IconButton onClick={handleRefresh} disabled={loading}>
-            <RefreshIcon />
-          </IconButton>
+          <Tooltip title="Refresh">
+            <IconButton onClick={handleRefresh} disabled={loading}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
 
@@ -114,12 +112,12 @@ const AllNotifications = () => {
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>Status</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Message</TableCell>
-              <TableCell>Timestamp</TableCell>
-              <TableCell align="right">Action</TableCell>
+            <TableRow sx={{ backgroundColor: 'primary.light' }}>
+              <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Message</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Timestamp</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 'bold' }}>Action</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -167,13 +165,15 @@ const AllNotifications = () => {
                   </TableCell>
                   <TableCell align="right">
                     {!notification.isRead && (
-                      <IconButton
-                        size="small"
-                        onClick={() => handleMarkAsRead(notification.ID, notification.Message)}
-                        color="primary"
-                      >
-                        <CheckCircleIcon />
-                      </IconButton>
+                      <Tooltip title="Mark as read">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleMarkAsRead(notification.ID, notification.Message)}
+                          color="primary"
+                        >
+                          <CheckCircleIcon />
+                        </IconButton>
+                      </Tooltip>
                     )}
                   </TableCell>
                 </TableRow>
